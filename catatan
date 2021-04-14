@@ -1,9 +1,0 @@
-Create and Running Docker:
-docker run --name todo-app-db -e POSTGRES_PASSWORD=123456 -p 5432:5432 -d postgres
-
-Start Docker:
-docker start todo-app-db
-
-Akses Postgres:
-docker exec -it todo-app-db psql -U postgres  
-

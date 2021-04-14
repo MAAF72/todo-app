@@ -26,8 +26,8 @@ const (
 )
 
 func main() {
-	var db_err error
-	engine, db_err = xorm.NewEngine(
+	var dbErr error
+	engine, dbErr = xorm.NewEngine(
 		DB_DRIVER,
 		fmt.Sprintf(
 			"user=%s dbname=%s password=%s port=%d sslmode=disable",
@@ -35,17 +35,17 @@ func main() {
 		),
 	)
 
-	if db_err != nil {
+	if dbErr != nil {
 		fmt.Println("Error when connecting to database")
-		fmt.Println(db_err)
+		fmt.Println(dbErr)
 		return
 	}
 
-	db_err = engine.Sync2(new(Todo), new(Author))
+	dbErr = engine.Sync2(new(Todo), new(Author))
 
-	if db_err != nil {
+	if dbErr != nil {
 		fmt.Println("Error when syning with database")
-		fmt.Println(db_err)
+		fmt.Println(dbErr)
 		return
 	}
 
@@ -61,10 +61,10 @@ func main() {
 		todosAPI.Use(iris.Compression)
 		todosAPI.Use(verifyMiddleware)
 
-		todosAPI.Get("/", list_todo)
-		todosAPI.Post("/", create_todo)
-		todosAPI.Patch("/{id:int}", update_todo)
-		todosAPI.Delete("/{id:int}", delete_todo)
+		todosAPI.Get("/", listTodo)
+		todosAPI.Post("/", createTodo)
+		todosAPI.Patch("/{id:int}", updateTodo)
+		todosAPI.Delete("/{id:int}", deleteTodo)
 	}
 
 	authAPI := app.Party("/auth")
@@ -102,30 +102,34 @@ type Todo struct {
 func register(ctx iris.Context) {
 	var data map[string]string
 
-	read_err := ctx.ReadJSON(&data)
+	readErr := ctx.ReadJSON(&data)
 
-	if read_err != nil {
+	if readErr != nil {
 		ctx.StatusCode(iris.StatusBadRequest)
 		return
 	}
 
-	hashed_password, hash_err := bcrypt.GenerateFromPassword([]byte(data["Password"]), bcrypt.DefaultCost)
+	hashedPass, hashErr := bcrypt.GenerateFromPassword([]byte(data["password"]), bcrypt.DefaultCost)
 
-	if hash_err != nil {
+	if hashErr != nil {
 		ctx.StatusCode(iris.StatusInternalServerError)
 		return
 	}
 
 	author := Author{}
-	author.Username = data["Username"]
-	author.Hash = string(hashed_password)
+	author.Username = data["username"]
+	author.Hash = string(hashedPass)
 
-	_, query_err := engine.Table("author").Insert(&author)
+	_, queryErr := engine.Table("author").Insert(&author)
 
-	if query_err != nil {
+	if queryErr != nil {
 		ctx.StatusCode(iris.StatusInternalServerError)
 		return
 	}
+
+	ctx.JSON(iris.Map{
+		"success": true,
+	})
 
 	ctx.StatusCode(iris.StatusCreated)
 }
@@ -133,17 +137,17 @@ func register(ctx iris.Context) {
 func login(ctx iris.Context) {
 	var data map[string]string
 
-	read_err := ctx.ReadJSON(&data)
+	readErr := ctx.ReadJSON(&data)
 
-	if read_err != nil {
+	if readErr != nil {
 		ctx.StatusCode(iris.StatusBadRequest)
 		return
 	}
 
-	author := Author{Username: data["Username"]}
-	has, query_err := engine.Table("author").Get(&author)
+	author := Author{Username: data["username"]}
+	has, queryErr := engine.Table("author").Get(&author)
 
-	if query_err != nil {
+	if queryErr != nil {
 		ctx.StatusCode(iris.StatusInternalServerError)
 		return
 	}
@@ -157,7 +161,7 @@ func login(ctx iris.Context) {
 		return
 	}
 
-	if bcrypt.CompareHashAndPassword([]byte(author.Hash), []byte(data["Password"])) != nil {
+	if bcrypt.CompareHashAndPassword([]byte(author.Hash), []byte(data["password"])) != nil {
 		ctx.JSON(iris.Map{
 			"success": false,
 			"message": "Wrong password",
@@ -168,9 +172,9 @@ func login(ctx iris.Context) {
 
 	claims := AuthClaims{Id: author.Id}
 
-	token, sign_err := signer.Sign(claims)
+	token, signErr := signer.Sign(claims)
 
-	if sign_err != nil {
+	if signErr != nil {
 		ctx.StatusCode(iris.StatusInternalServerError)
 		return
 	}
@@ -184,47 +188,54 @@ func login(ctx iris.Context) {
 }
 
 func logout(ctx iris.Context) {
-	logout_err := ctx.Logout()
+	logoutErr := ctx.Logout()
 
-	if logout_err != nil {
+	if logoutErr != nil {
 		ctx.StatusCode(iris.StatusInternalServerError)
 		return
 	}
 
+	ctx.JSON(iris.Map{
+		"success": true,
+	})
+
 	ctx.StatusCode(iris.StatusOK)
 }
 
-func create_todo(ctx iris.Context) {
+func createTodo(ctx iris.Context) {
 	var todo Todo
 	claims := jwt.Get(ctx).(*AuthClaims)
 
-	read_err := ctx.ReadJSON(&todo)
+	readErr := ctx.ReadJSON(&todo)
 
-	if read_err != nil {
+	if readErr != nil {
 		ctx.StatusCode(iris.StatusBadRequest)
 		return
 	}
 
 	todo.AuthorId = claims.Id
 
-	_, query_err := engine.Table("todo").Insert(&todo)
+	_, queryErr := engine.Table("todo").Insert(&todo)
 
-	if query_err != nil {
+	if queryErr != nil {
 		ctx.StatusCode(iris.StatusInternalServerError)
 		return
 	}
+	ctx.JSON(iris.Map{
+		"success": true,
+	})
 
 	ctx.StatusCode(iris.StatusCreated)
 }
 
-func list_todo(ctx iris.Context) {
+func listTodo(ctx iris.Context) {
 	var todos []Todo
 
 	claims := jwt.Get(ctx).(*AuthClaims)
 
-	_, query_err := engine.Table("todo").Where("author_id=?", claims.Id).Get(&todos)
+	queryErr := engine.Table("todo").Where("author_id=?", claims.Id).Find(&todos)
 
-	if query_err != nil {
+	if queryErr != nil {
 		ctx.StatusCode(iris.StatusInternalServerError)
 		return
 	}
@@ -234,21 +245,21 @@ func list_todo(ctx iris.Context) {
 	ctx.StatusCode(iris.StatusOK)
 }
 
-func update_todo(ctx iris.Context) {
+func updateTodo(ctx iris.Context) {
 	var todo Todo
 
-	todo_id, query_err := ctx.Params().GetInt64("id")
+	todoID, queryErr := ctx.Params().GetInt64("id")
 
-	if query_err != nil {
+	if queryErr != nil {
 		ctx.StatusCode(iris.StatusInternalServerError)
 		return
 	}
 
-	todo.Id = todo_id
+	todo.Id = todoID
 
-	has, query_err := engine.Table("todo").ID(todo.Id).Get(&todo)
+	has, queryErr := engine.Table("todo").ID(todo.Id).Get(&todo)
 
-	if query_err != nil {
+	if queryErr != nil {
 		ctx.StatusCode(iris.StatusInternalServerError)
 		return
 	}
@@ -273,38 +284,42 @@ func update_todo(ctx iris.Context) {
 		return
 	}
 
-	read_err := ctx.ReadJSON(&todo)
+	readErr := ctx.ReadJSON(&todo)
 
-	if read_err != nil {
+	if readErr != nil {
 		ctx.StatusCode(iris.StatusBadRequest)
 		return
 	}
 
-	_, query_err = engine.Table("todo").ID(todo.Id).Cols("name", "description", "completed").UseBool("completed").Update(&todo)
+	_, queryErr = engine.Table("todo").ID(todo.Id).Cols("name", "description", "completed").UseBool("completed").Update(&todo)
 
-	if query_err != nil {
+	if queryErr != nil {
 		ctx.StatusCode(iris.StatusInternalServerError)
 		return
 	}
+
+	ctx.JSON(iris.Map{
+		"success": true,
+	})
 
 	ctx.StatusCode(iris.StatusOK)
 }
 
-func delete_todo(ctx iris.Context) {
+func deleteTodo(ctx iris.Context) {
 	var todo Todo
 
-	todo_id, params_err := ctx.Params().GetInt64("id")
+	todoID, paramsErr := ctx.Params().GetInt64("id")
 
-	if params_err != nil {
+	if paramsErr != nil {
 		ctx.StatusCode(iris.StatusInternalServerError)
 		return
 	}
 
-	todo.Id = todo_id
+	todo.Id = todoID
 
-	has, query_err := engine.Table("todo").ID(todo.Id).Get(&todo)
+	has, queryErr := engine.Table("todo").ID(todo.Id).Get(&todo)
 
-	if query_err != nil {
+	if queryErr != nil {
 		ctx.StatusCode(iris.StatusInternalServerError)
 		return
 	}
@@ -329,12 +344,16 @@ func delete_todo(ctx iris.Context) {
 		return
 	}
 
-	_, query_err = engine.Table("todo").ID(todo.Id).Delete(&todo)
+	_, queryErr = engine.Table("todo").ID(todo.Id).Delete(&todo)
 
-	if query_err != nil {
+	if queryErr != nil {
 		ctx.StatusCode(iris.StatusInternalServerError)
 		return
 	}
+
+	ctx.JSON(iris.Map{
+		"success": true,
+	})
 
 	ctx.StatusCode(iris.StatusOK)
 }
