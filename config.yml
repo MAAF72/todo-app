@@ -1,0 +1,14 @@
+database:
+  driver: "postgres"
+  user: "postgres"
+  name: "postgres"
+  password: "123456"
+  port: 5432
+  ssl: "disable"
+
+jwt:
+  secret_key: "INI_SECRET_KEY"
+  token_duration: 10
+
+server:
+  port: 8080
